@@ -20,7 +20,7 @@ jobs:
   testnet-deploy:
     name: Testnet Deploy + Negative Test
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
       
@@ -41,6 +41,18 @@ jobs:
       
       - name: Install stellar-sdk
         run: npm install -g @stellar/stellar-sdk
+      
+      - name: Run full live flow (create vault, set manager, rebalance)
+        env:
+          OWNER_SECRET_KEY: ${{ secrets.OWNER_SECRET_KEY }}
+          MANAGER_SECRET_KEY: ${{ secrets.MANAGER_SECRET_KEY }}
+          VAULT_ID: ${{ github.event.inputs.vault_id }}
+          NIRIUM_BASE_URL: https://rpc-futurenet.stellar.org
+          NETWORK_PASSPHRASE: "Test SDF Network ; September 2015"
+        working-directory: examples/treasury-rebalance-approval
+        run: |
+          echo "y" | python main.py
+        timeout-minutes: 30
       
       - name: Run negative test (live)
         env:
