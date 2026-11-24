@@ -41,9 +41,10 @@ jobs:
           VAULT_ID: ${{ github.event.inputs.vault_id }}
           NIRIUM_BASE_URL: https://rpc-futurenet.stellar.org
           NETWORK_PASSPHRASE: "Test SDF Network ; September 2015"
+          AUTO_APPROVE: "y"
         working-directory: examples/treasury-rebalance-approval
         run: |
-          echo "y" | python main.py
+          python main.py
         timeout-minutes: 30
       
       - name: Run negative test (live)
