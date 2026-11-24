@@ -57,7 +57,7 @@ anchor = await agent.anchor_audit_record(
 print(anchor["cid"])
 ```
 
-Anchor a **hash** rather than the data itself: IPFS content cannot be deleted, so raw personal data would outlive any erasure request.
+Anchor a **hash** rather than the data itself: nobody can guarantee that something is deleted from IPFS (anyone with the CID may have kept a copy), so raw personal data could outlive any erasure request.
 
 ### Signed receipts: prove who declared it
 
@@ -79,6 +79,21 @@ anchor = await agent.anchor_audit_record(
 print(anchor["cid"], anchor["attestedBy"])
 ```
 
+### Keep your own copy
+
+The receipt lives on IPFS only while someone pins it. `anchor_audit_record()` returns the exact `document` that was pinned (nodes deployed after 21 Nov 2026); save it, and `receipt_cid()` shows any time that your copy is the original. If IPFS ever loses it, add the same bytes again (`ipfs add --cid-version=0`) and you get the same CID.
+
+```python
+import json
+from nirium import receipt_cid
+
+anchor = await agent.anchor_audit_record(hash=hash, tag="invoice-batch-jul")
+if "document" in anchor:
+    data = json.dumps(anchor["document"], separators=(",", ":"), ensure_ascii=False).encode()
+    open("receipt.json", "wb").write(data)          # exactly what was pinned
+    assert receipt_cid(open("receipt.json", "rb").read()) == anchor["cid"]
+```
+
 ### Verify any receipt, without trusting Nirium
 
 ```bash
@@ -93,7 +108,7 @@ npx nirium-cli verify <cid> --hash <64-hex-sha256>
 
 The Python SDK includes a hardened, self-healing WebSocket signals client with exponential backoff, randomized jitter, configurable retry caps, automatic deduplication, and typed status/error channels.
 
-> The hosted stream (`wss://nirium-agent.fly.dev/ws/signals`) did not accept connections when checked on 18 Nov 2026. Point the client at an agent you run yourself to use it.
+> The hosted stream (`wss://nirium-agent.fly.dev/ws/signals`) did not accept connections when checked on 21 Nov 2026. Point the client at an agent you run yourself to use it.
 
 ```python
 from nirium import Agent, WebSocketMaxRetriesExceeded, WebSocketStatus
@@ -168,6 +183,46 @@ agent.init_x402(secret_key="S...", network="stellar:pubnet", approve=approve)
 
 Why the default stays low: an agent pays whatever a server's 402 asks for, so a low cap limits the damage from a mispriced or malicious endpoint. `NiriumX402Tool` accepts the same `max_amount_per_payment` and `approve` options.
 
+#### Pre-sign policy hook
+
+Pass `policy` to `init_x402()` and every `x402_fetch()` asks your policy before anything is signed. The question is asked before signing, so the policy sees exactly what would be signed: amount, destination, asset, resource URL, and network.
+
+The policy can be a simple callable (sync or async) or an object implementing `evaluate(ctx)`:
+
+```python
+from nirium import Agent, X402PolicyError
+
+async def policy(ctx):
+    # ctx provides amount, asset, payee, resource, network, contextHash, etc.
+    if int(ctx.amount) <= 1_000_000:  # 0.1 USDC
+        return {
+            "decision": "ALLOW",
+            "contextHash": ctx.contextHash,
+            "policyVersion": "v1",
+            "expiresAt": (time.time() + 2) * 1000,
+        }
+    return {"decision": "DENY", "reason": "over limit"}
+
+agent = Agent()
+agent.init_x402(
+    secret_key="S...",
+    network="stellar:pubnet",
+    policy=policy,
+    current_version=lambda ctx: "v1",  # optional: source of current policy version
+)
+
+try:
+    res = await agent.x402_fetch(url)
+except X402PolicyError as e:
+    print(e.outcome)  # 'DENY', 'WAIT', 'STALE', 'EXPIRED', 'TIMEOUT', 'ENGINE_ERROR', ...
+```
+
+Only an `ALLOW` reaches the signer. Everything else signs nothing: `DENY`, `WAIT`, an unhandled exception (fails closed), no answer before the deadline (`policy_timeout_ms`, default 5000 ms, never more than half the payment's `maxTimeoutSeconds`), a malformed answer, or an `ALLOW` past its `expiresAt`. Without `policy`, `x402_fetch()` behaves exactly as before.
+
+**Stale ALLOW.** With `current_version` set, it is read after the `ALLOW` and right before signing, and the `ALLOW` signs only if its `policyVersion` matches. A rejected, empty or late read signs nothing. This check narrows the window to the step between the read and the signer call.
+
+**What this does not do.** It is a check on the agent side, not account-level enforcement: code in the same process that holds the raw secret key can still sign directly, and nothing on-chain enforces the policy. It does not solve pending-capacity reservation (concurrent requests that observe the same remaining capacity): two calls evaluated at the same time can each fit a limit that together they exceed, and an aggregate cap must be held by your policy store.
+
 ### LangChain tool - pay x402 from any agent
 
 `NiriumX402Tool` is a LangChain `BaseTool` that wraps the same `init_x402` / `x402_fetch` client. A ReAct-style agent can pay a protected Stellar endpoint as a normal tool call. The Stellar secret is constructor/env configuration only: it never appears in the tool description, args schema, error text, or return value.
@@ -211,7 +266,7 @@ This is not fixed in the version published today. Use x402 (`init_x402()` / `x40
 |---|---|
 | **Public** (no key) | `health`, `loop/status`, `execute-demo`, `signals/recent`, `skills` list |
 | **Protected** (API key) | `execute`, `market`, `loop/start\|stop\|scan`, `subscriptions`, `skills/install`, `webhooks` |
-| **WebSocket** (JWT) | `/ws/signals` - signal stream. The hosted endpoint did not accept connections when checked on 18 Nov 2026; run your own agent to use it. |
+| **WebSocket** (JWT) | `/ws/signals` - signal stream. The hosted endpoint did not accept connections when checked on 21 Nov 2026; run your own agent to use it. |
 | **x402 Premium** | `/api/v1/premium/signals` ($0.02 USDC), `/api/v1/premium/market` ($0.05 USDC) |
 | **MPP Charge** | `/api/v1/mpp/signals`, `/api/v1/mpp/market` (testnet verified with the TypeScript client on 15 Oct 2026, mainnet untested; `mpp_fetch()` does not work in this version) |
 

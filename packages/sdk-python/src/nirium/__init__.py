@@ -8,18 +8,26 @@ from .client import (  # type: ignore
     WebSocketStatus,
     X402NetworkMismatchError,
     X402SpendCapError,
+    X402PolicyError,
+    X402PolicyContext,
+    X402PolicyDecision,
 )
+from .receipts import receipt_cid
 
 if TYPE_CHECKING:
     from .langchain_tools import NiriumX402Tool, create_nirium_x402_tool
 
-__version__ = "0.12.6"
+__version__ = "0.12.9"
 __all__ = [
     "Agent",
     "WebSocketMaxRetriesExceeded",
     "WebSocketStatus",
     "X402NetworkMismatchError",
     "X402SpendCapError",
+    "X402PolicyError",
+    "X402PolicyContext",
+    "X402PolicyDecision",
+    "receipt_cid",
     "NiriumX402Tool",
     "create_nirium_x402_tool",
 ]

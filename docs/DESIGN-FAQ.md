@@ -36,7 +36,9 @@ A receipt is for what the ledger doesn't hold:
 
 To check a receipt yourself, paste its CID at
 [nirium.xyz/verify](https://nirium.xyz/verify). No account needed, and the page
-shows what the ledger already proves and what the receipt adds.
+shows what the ledger already proves and what the receipt adds. The page
+recomputes the CID in your browser, but checks the signature on our server; for
+a check that relies on nothing of ours, run `npx nirium-cli verify <CID>`.
 
 ## Then why make a receipt for a plain payment?
 
@@ -56,8 +58,9 @@ to get paid.
 ## What exactly gets stored?
 
 A SHA-256 hash of your record, a tag, and an optional signature, pinned to
-IPFS. We ask integrators to send a hash, not the record itself: IPFS content
-can't be deleted, so raw personal data would outlive any erasure request.
+IPFS. We ask integrators to send a hash, not the record itself: nobody can
+guarantee that something is deleted from IPFS (anyone with the CID may have kept
+a copy), so raw personal data could outlive any erasure request.
 
 A receipt is an integrity seal: it shows the record hasn't changed since it
 was anchored and, if signed, who declared it. It does not prove the record is
@@ -71,6 +74,19 @@ checked with the signer's public key. `nirium verify` (open source) reads from
 a dedicated Filebase gateway and falls back to Pinata, ipfs.io and dweb.link.
 What would stop is new anchoring through our API.
 
+One limit: a document stays on IPFS only while someone pins it. Today we pin
+every receipt on Pinata. A second copy on Filebase is built and deployed, but
+it is not active: Filebase's pinning API needs a paid plan, and that account
+is still on the free one (checked 21 Nov 2026). `GET /api/audit/info` reports
+which copies are live.
+
+So keep your own copy. The anchor response includes the exact `document` that
+was pinned; `nirium anchor --save receipt.json` writes it for you. The CID is
+the hash of those bytes, so `nirium cid receipt.json --expect <CID>` (or
+`receiptCid()` / `receipt_cid()` in the SDKs) shows it is the original, and
+`ipfs add --cid-version=0 receipt.json` puts it back on IPFS with the same CID,
+even if every pin we pay for disappears.
+
 ## Does Nirium hold funds or keys?
 
 No. The client signs every payment with its own key, independent partners
@@ -81,15 +97,19 @@ settle, and Nirium never holds client funds or a key that can move them.
 No. The hook (experimental since 0.16.0) asks *your* policy, in your process,
 before anything is signed. DENY or WAIT means nothing is signed. Nirium is
 never the policy owner and never answers ALLOW or DENY for someone else's
-payment. Its real scope and what it does not cover are in
-[`packages/sdk/README.md`](../packages/sdk/README.md#pre-sign-policy-hook-experimental).
+payment. It is in the TypeScript SDK and, since 0.12.9 (22 Nov 2026), in the
+Python SDK. Its real scope and what it does not cover are in
+[`packages/sdk/README.md`](../packages/sdk/README.md#pre-sign-policy-hook-experimental)
+and [`packages/sdk-python/README.md`](../packages/sdk-python/README.md#pre-sign-policy-hook).
 
 ## Who checks receipts today?
 
 Honestly, few people yet. TIA anchors signed receipts on mainnet with its own
-keys, AgentLedger reports running the pre-sign hook on testnet (its public
-ledger shows the payments but doesn't name the hook), and a Trustless Work
-escrow pilot on testnet refused tampered evidence and released valid
-evidence. All of it is listed with hashes in [`EVIDENCE.md`](../EVIDENCE.md).
+keys. AgentLedger ran the pre-sign hook on mainnet on 18 Nov 2026 and anchored
+five signed receipts for its decisions; its founder has worked with Nirium
+part-time since October 2026, so we count that as team activity, not outside
+use. An outside reviewer (holistis) checked two receipts with their own code,
+without our tools, on 19 Nov 2026. And a Trustless Work escrow pilot on testnet
+refused tampered evidence and released valid evidence. All of it is listed with hashes in [`EVIDENCE.md`](../EVIDENCE.md).
 We don't have organic third-party verification at scale, and we say so rather
 than imply it.
