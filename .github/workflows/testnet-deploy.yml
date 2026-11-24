@@ -7,14 +7,6 @@ on:
         description: "Vault ID for testnet deployment"
         required: true
         type: string
-      owner_secret:
-        description: "Owner secret key (testnet)"
-        required: true
-        type: string
-      manager_secret:
-        description: "Manager secret key (testnet)"
-        required: true
-        type: string
 
 jobs:
   testnet-deploy:
